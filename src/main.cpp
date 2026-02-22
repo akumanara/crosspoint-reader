@@ -12,6 +12,7 @@
 #include <SdFontProvider.h>
 #include <builtinFonts/all.h>
 
+#include <cstdio>
 #include <cstring>
 
 #include "CrossPointSettings.h"
@@ -194,16 +195,42 @@ void enterDeepSleep() {
 }
 
 void initSdFont() {
-  // Map font size setting to matching NotoSans .cpf file on SD card
-  static const char* sdFontPaths[] = {
-      "/.crosspoint/fonts/notosans_12_regular.cpf",  // SMALL
-      "/.crosspoint/fonts/notosans_14_regular.cpf",  // MEDIUM
-      "/.crosspoint/fonts/notosans_16_regular.cpf",  // LARGE
-      "/.crosspoint/fonts/notosans_18_regular.cpf",  // EXTRA_LARGE
-  };
   const uint8_t sizeIdx = std::min(static_cast<uint8_t>(SETTINGS.fontSize),
                                    static_cast<uint8_t>(CrossPointSettings::FONT_SIZE_COUNT - 1));
-  SdFontProvider::getInstance().begin(sdFontPaths[sizeIdx]);
+
+  // Bookerly and NotoSans use the same point sizes; OpenDyslexic uses smaller ones.
+  static const uint8_t standardSizes[] = {12, 14, 16, 18};  // SMALL/MEDIUM/LARGE/EXTRA_LARGE
+  static const uint8_t dyslexicSizes[] = {8, 10, 12, 14};
+
+  const char* fontName = "notosans";
+  const uint8_t* sizes = standardSizes;
+
+  switch (SETTINGS.fontFamily) {
+    case CrossPointSettings::BOOKERLY:
+      fontName = "bookerly";
+      break;
+    case CrossPointSettings::OPENDYSLEXIC:
+      fontName = "opendyslexic";
+      sizes = dyslexicSizes;
+      break;
+    default:
+      break;
+  }
+
+  char cpfPath[64];
+  snprintf(cpfPath, sizeof(cpfPath), "/.crosspoint/fonts/%s_%d_regular.cpf", fontName, sizes[sizeIdx]);
+
+  auto& sdFont = SdFontProvider::getInstance();
+  if (sdFont.begin(cpfPath)) {
+    return;
+  }
+
+  // Fallback to NotoSans if the font-family-specific CPF is not found on the SD card.
+  if (SETTINGS.fontFamily != CrossPointSettings::NOTOSANS) {
+    LOG_DBG("MAIN", "SD font %s not found, falling back to NotoSans", cpfPath);
+    snprintf(cpfPath, sizeof(cpfPath), "/.crosspoint/fonts/notosans_%d_regular.cpf", standardSizes[sizeIdx]);
+    sdFont.begin(cpfPath);
+  }
 }
 
 void setupDisplayAndFonts() {

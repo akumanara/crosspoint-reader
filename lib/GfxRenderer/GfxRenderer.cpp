@@ -976,6 +976,7 @@ int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, EpdFontFami
   uint32_t prevCp = 0;
   int width = 0;
   const auto& font = fontIt->second;
+  auto& sdFont = SdFontProvider::getInstance();
   while ((cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text)))) {
     if (utf8IsCombiningMark(cp)) {
       continue;
@@ -985,13 +986,11 @@ int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, EpdFontFami
       width += font.getKerning(prevCp, cp, style);
     }
     const EpdGlyph* glyph = font.getGlyph(cp, style);
-    if (!glyph) {
-      auto& sdFont = SdFontProvider::getInstance();
-      if (sdFont.isReady()) {
-        const CachedGlyph* sdGlyph = sdFont.getGlyph(cp);
-        if (sdGlyph) glyph = &sdGlyph->glyph;
-      }
+    if (!glyph && sdFont.isReady()) {
+      const CachedGlyph* sdGlyph = sdFont.getGlyph(cp);
+      if (sdGlyph) glyph = &sdGlyph->glyph;
     }
+    if (!glyph) glyph = font.getGlyph(REPLACEMENT_GLYPH, style);
     if (glyph) width += glyph->advanceX;
     prevCp = cp;
   }
