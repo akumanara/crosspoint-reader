@@ -1079,7 +1079,7 @@ void GfxRenderer::drawTextRotated90CW(const int fontId, const int x, const int y
     int is2Bit = font.getData(style)->is2Bit;
 
     if (glyph) {
-      bitmap = &font.getData(style)->bitmap[glyph->dataOffset];
+      bitmap = getGlyphBitmap(font.getData(style), glyph);
     } else {
       auto& sdFont = SdFontProvider::getInstance();
       if (sdFont.isReady()) {
@@ -1092,7 +1092,7 @@ void GfxRenderer::drawTextRotated90CW(const int fontId, const int x, const int y
       }
       if (!glyph) {
         glyph = font.getGlyph(REPLACEMENT_GLYPH, style);
-        if (glyph) bitmap = &font.getData(style)->bitmap[glyph->dataOffset];
+        if (glyph) bitmap = getGlyphBitmap(font.getData(style), glyph);
       }
     }
 
@@ -1129,7 +1129,7 @@ void GfxRenderer::drawTextRotated90CW(const int fontId, const int x, const int y
           if (is2Bit) {
             const uint8_t byte = bitmap[pixelPosition / 4];
             const uint8_t bit_index = (3 - pixelPosition % 4) * 2;
-            const uint8_t bmpVal = 3 - (byte >> bit_index) & 0x3;
+            const uint8_t bmpVal = 3 - ((byte >> bit_index) & 0x3);
 
             if (renderMode == BW && bmpVal < 3) {
               drawPixel(screenX, screenY, black);
@@ -1261,8 +1261,8 @@ void GfxRenderer::renderChar(const EpdFontFamily& fontFamily, uint32_t cp, int* 
   int is2Bit = fontFamily.getData(style)->is2Bit;
 
   if (glyph) {
-    // Fast path: glyph found in flash font
-    bitmap = &fontFamily.getData(style)->bitmap[glyph->dataOffset];
+    // Fast path: glyph found in flash font - use getGlyphBitmap to handle compression
+    bitmap = getGlyphBitmap(fontFamily.getData(style), glyph);
   } else {
     // SD card fallback path
     auto& sdFont = SdFontProvider::getInstance();
@@ -1277,7 +1277,7 @@ void GfxRenderer::renderChar(const EpdFontFamily& fontFamily, uint32_t cp, int* 
     if (!glyph) {
       glyph = fontFamily.getGlyph(REPLACEMENT_GLYPH, style);
       if (glyph) {
-        bitmap = &fontFamily.getData(style)->bitmap[glyph->dataOffset];
+        bitmap = getGlyphBitmap(fontFamily.getData(style), glyph);
       }
     }
   }
@@ -1304,7 +1304,7 @@ void GfxRenderer::renderChar(const EpdFontFamily& fontFamily, uint32_t cp, int* 
           // the direct bit from the font is 0 -> white, 1 -> light gray, 2 -> dark gray, 3 -> black
           // we swap this to better match the way images and screen think about colors:
           // 0 -> black, 1 -> dark grey, 2 -> light grey, 3 -> white
-          const uint8_t bmpVal = 3 - (byte >> bit_index) & 0x3;
+          const uint8_t bmpVal = 3 - ((byte >> bit_index) & 0x3);
 
           if (renderMode == BW && bmpVal < 3) {
             // Black (also paints over the grays in BW mode)
@@ -1329,7 +1329,9 @@ void GfxRenderer::renderChar(const EpdFontFamily& fontFamily, uint32_t cp, int* 
     }
   }
 
-  *x += glyph->advanceX;
+  if (!utf8IsCombiningMark(cp)) {
+    *x += glyph->advanceX;
+  }
 }
 
 void GfxRenderer::getOrientedViewableTRBL(int* outTop, int* outRight, int* outBottom, int* outLeft) const {
