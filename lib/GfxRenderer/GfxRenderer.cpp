@@ -1,6 +1,7 @@
 #include "GfxRenderer.h"
 
 #include <Logging.h>
+#include <SdFontProvider.h>
 #include <Utf8.h>
 
 const uint8_t* GfxRenderer::getGlyphBitmap(const EpdFontData* fontData, const EpdGlyph* glyph) const {
@@ -655,7 +656,7 @@ void GfxRenderer::drawBitmap(const Bitmap& bitmap, const int x, const int y, con
       const uint8_t val = outputRow[bmpX / 4] >> (6 - ((bmpX * 2) % 8)) & 0x3;
 
       if (renderMode == BW && val < 3) {
-        drawPixel(screenX, screenY);
+        drawPixel(screenX, screenY, true);
       } else if (renderMode == GRAYSCALE_MSB && (val == 1 || val == 2)) {
         drawPixel(screenX, screenY, false);
       } else if (renderMode == GRAYSCALE_LSB && val == 1) {
@@ -1067,13 +1068,84 @@ void GfxRenderer::drawTextRotated90CW(const int fontId, const int x, const int y
     }
 
     const EpdGlyph* glyph = font.getGlyph(cp, style);
+    const uint8_t* bitmap = nullptr;
+    int is2Bit = font.getData(style)->is2Bit;
 
-    lastBaseX = xPos;
-    lastBaseY = yPos;
-    lastBaseAdvance = glyph ? glyph->advanceX : 0;
-    lastBaseTop = glyph ? glyph->top : 0;
+    if (glyph) {
+      bitmap = &font.getData(style)->bitmap[glyph->dataOffset];
+    } else {
+      auto& sdFont = SdFontProvider::getInstance();
+      if (sdFont.isReady()) {
+        const CachedGlyph* sdGlyph = sdFont.getGlyph(cp);
+        if (sdGlyph) {
+          glyph = &sdGlyph->glyph;
+          bitmap = sdGlyph->bitmapData;
+          is2Bit = sdFont.getIs2Bit();
+        }
+      }
+      if (!glyph) {
+        glyph = font.getGlyph(REPLACEMENT_GLYPH, style);
+        if (glyph) bitmap = &font.getData(style)->bitmap[glyph->dataOffset];
+      }
+    }
 
-    renderCharImpl<TextRotation::Rotated90CW>(*this, renderMode, font, cp, &xPos, &yPos, black, style);
+    if (!glyph || !bitmap) {
+      prevCp = cp;
+      continue;
+    }
+
+    if (!utf8IsCombiningMark(cp)) {
+      lastBaseX = xPos;
+      lastBaseY = yPos;
+      lastBaseAdvance = glyph->advanceX;
+      lastBaseTop = glyph->top;
+      hasBaseGlyph = true;
+    }
+
+    const uint8_t width = glyph->width;
+    const uint8_t height = glyph->height;
+    const int left = glyph->left;
+    const int top = glyph->top;
+
+    if (bitmap != nullptr) {
+      for (int glyphY = 0; glyphY < height; glyphY++) {
+        for (int glyphX = 0; glyphX < width; glyphX++) {
+          const int pixelPosition = glyphY * width + glyphX;
+
+          // 90° clockwise rotation transformation:
+          // screenX = x + (ascender - top + glyphY)
+          // screenY = yPos - (left + glyphX)
+          const int screenX = x + (font.getData(style)->ascender - top + glyphY);
+          const int screenY = yPos - left - glyphX;
+
+          if (is2Bit) {
+            const uint8_t byte = bitmap[pixelPosition / 4];
+            const uint8_t bit_index = (3 - pixelPosition % 4) * 2;
+            const uint8_t bmpVal = 3 - (byte >> bit_index) & 0x3;
+
+            if (renderMode == BW && bmpVal < 3) {
+              drawPixel(screenX, screenY, black);
+            } else if (renderMode == GRAYSCALE_MSB && (bmpVal == 1 || bmpVal == 2)) {
+              drawPixel(screenX, screenY, false);
+            } else if (renderMode == GRAYSCALE_LSB && bmpVal == 1) {
+              drawPixel(screenX, screenY, false);
+            }
+          } else {
+            const uint8_t byte = bitmap[pixelPosition / 8];
+            const uint8_t bit_index = 7 - (pixelPosition % 8);
+
+            if ((byte >> bit_index) & 1) {
+              drawPixel(screenX, screenY, black);
+            }
+          }
+        }
+      }
+    }
+
+    // Move to next character position (going up, so decrease Y)
+    if (!utf8IsCombiningMark(cp)) {
+      yPos -= glyph->advanceX;
+    }
     prevCp = cp;
   }
 }
@@ -1176,7 +1248,80 @@ void GfxRenderer::cleanupGrayscaleWithFrameBuffer() const {
 
 void GfxRenderer::renderChar(const EpdFontFamily& fontFamily, uint32_t cp, int* x, int* y, bool pixelState,
                              EpdFontFamily::Style style) const {
-  renderCharImpl<TextRotation::None>(*this, renderMode, fontFamily, cp, x, y, pixelState, style);
+  const EpdGlyph* glyph = fontFamily.getGlyph(cp, style);
+  const uint8_t* bitmap = nullptr;
+  int is2Bit = fontFamily.getData(style)->is2Bit;
+
+  if (glyph) {
+    // Fast path: glyph found in flash font
+    bitmap = &fontFamily.getData(style)->bitmap[glyph->dataOffset];
+  } else {
+    // SD card fallback path
+    auto& sdFont = SdFontProvider::getInstance();
+    if (sdFont.isReady()) {
+      const CachedGlyph* sdGlyph = sdFont.getGlyph(cp);
+      if (sdGlyph) {
+        glyph = &sdGlyph->glyph;
+        bitmap = sdGlyph->bitmapData;
+        is2Bit = sdFont.getIs2Bit();
+      }
+    }
+    if (!glyph) {
+      glyph = fontFamily.getGlyph(REPLACEMENT_GLYPH, style);
+      if (glyph) {
+        bitmap = &fontFamily.getData(style)->bitmap[glyph->dataOffset];
+      }
+    }
+  }
+
+  if (!glyph || !bitmap) {
+    LOG_ERR("GFX", "No glyph for codepoint %d", cp);
+    return;
+  }
+
+  const uint8_t width = glyph->width;
+  const uint8_t height = glyph->height;
+  const int left = glyph->left;
+
+  if (bitmap != nullptr) {
+    for (int glyphY = 0; glyphY < height; glyphY++) {
+      const int screenY = *y - glyph->top + glyphY;
+      for (int glyphX = 0; glyphX < width; glyphX++) {
+        const int pixelPosition = glyphY * width + glyphX;
+        const int screenX = *x + left + glyphX;
+
+        if (is2Bit) {
+          const uint8_t byte = bitmap[pixelPosition / 4];
+          const uint8_t bit_index = (3 - pixelPosition % 4) * 2;
+          // the direct bit from the font is 0 -> white, 1 -> light gray, 2 -> dark gray, 3 -> black
+          // we swap this to better match the way images and screen think about colors:
+          // 0 -> black, 1 -> dark grey, 2 -> light grey, 3 -> white
+          const uint8_t bmpVal = 3 - (byte >> bit_index) & 0x3;
+
+          if (renderMode == BW && bmpVal < 3) {
+            // Black (also paints over the grays in BW mode)
+            drawPixel(screenX, screenY, pixelState);
+          } else if (renderMode == GRAYSCALE_MSB && (bmpVal == 1 || bmpVal == 2)) {
+            // Light gray (also mark the MSB if it's going to be a dark gray too)
+            // We have to flag pixels in reverse for the gray buffers, as 0 leave alone, 1 update
+            drawPixel(screenX, screenY, false);
+          } else if (renderMode == GRAYSCALE_LSB && bmpVal == 1) {
+            // Dark gray
+            drawPixel(screenX, screenY, false);
+          }
+        } else {
+          const uint8_t byte = bitmap[pixelPosition / 8];
+          const uint8_t bit_index = 7 - (pixelPosition % 8);
+
+          if ((byte >> bit_index) & 1) {
+            drawPixel(screenX, screenY, pixelState);
+          }
+        }
+      }
+    }
+  }
+
+  *x += glyph->advanceX;
 }
 
 void GfxRenderer::getOrientedViewableTRBL(int* outTop, int* outRight, int* outBottom, int* outLeft) const {

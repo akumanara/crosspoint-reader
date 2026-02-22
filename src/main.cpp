@@ -9,6 +9,7 @@
 #include <I18n.h>
 #include <Logging.h>
 #include <SPI.h>
+#include <SdFontProvider.h>
 #include <builtinFonts/all.h>
 
 #include <cstring>
@@ -192,6 +193,20 @@ void enterDeepSleep() {
   powerManager.startDeepSleep(gpio);
 }
 
+void initSdFont() {
+  // Map font size setting to matching NotoSans .cpf file on SD card
+  static const char* sdFontPaths[] = {
+      "/.crosspoint/fonts/notosans_12_regular.cpf",  // SMALL
+      "/.crosspoint/fonts/notosans_14_regular.cpf",  // MEDIUM
+      "/.crosspoint/fonts/notosans_16_regular.cpf",  // LARGE
+      "/.crosspoint/fonts/notosans_18_regular.cpf",  // EXTRA_LARGE
+  };
+  const uint8_t sizeIdx = std::min(static_cast<uint8_t>(SETTINGS.fontSize),
+                                   static_cast<uint8_t>(CrossPointSettings::FONT_SIZE_COUNT - 1));
+  SdFontProvider::getInstance().begin(sdFontPaths[sizeIdx]);
+}
+
+
 void setupDisplayAndFonts() {
   display.begin();
   renderer.begin();
@@ -254,6 +269,7 @@ void setup() {
   KOREADER_STORE.loadFromFile();
   UITheme::getInstance().reload();
   ButtonNavigator::setMappedInputManager(mappedInputManager);
+  initSdFont();
 
   switch (gpio.getWakeupReason()) {
     case HalGPIO::WakeupReason::PowerButton:

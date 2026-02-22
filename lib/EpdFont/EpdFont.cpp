@@ -1,5 +1,6 @@
 #include "EpdFont.h"
 
+#include <SdFontProvider.h>
 #include <Utf8.h>
 
 #include <algorithm>
@@ -32,8 +33,17 @@ void EpdFont::getTextBounds(const char* string, const int startX, const int star
 
     const EpdGlyph* glyph = getGlyph(cp);
     if (!glyph) {
-      // TODO: Better handle this?
-      prevCp = 0;
+      // SD card font fallback
+      auto& sdFont = SdFontProvider::getInstance();
+      if (sdFont.isReady()) {
+        const CachedGlyph* sdGlyph = sdFont.getGlyph(cp);
+        if (sdGlyph) glyph = &sdGlyph->glyph;
+      }
+    }
+    if (!glyph) {
+      glyph = getGlyph(REPLACEMENT_GLYPH);
+    }
+    if (!glyph) {
       continue;
     }
 
