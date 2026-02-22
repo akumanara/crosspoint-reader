@@ -206,7 +206,6 @@ void initSdFont() {
   SdFontProvider::getInstance().begin(sdFontPaths[sizeIdx]);
 }
 
-
 void setupDisplayAndFonts() {
   display.begin();
   renderer.begin();

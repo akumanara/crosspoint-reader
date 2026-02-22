@@ -40,6 +40,7 @@ void EpdFont::getTextBounds(const char* string, const int startX, const int star
         if (sdGlyph) glyph = &sdGlyph->glyph;
       }
     }
+
     if (!glyph) {
       glyph = getGlyph(REPLACEMENT_GLYPH);
     }

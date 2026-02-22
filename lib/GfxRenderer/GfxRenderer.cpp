@@ -985,6 +985,13 @@ int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, EpdFontFami
       width += font.getKerning(prevCp, cp, style);
     }
     const EpdGlyph* glyph = font.getGlyph(cp, style);
+    if (!glyph) {
+      auto& sdFont = SdFontProvider::getInstance();
+      if (sdFont.isReady()) {
+        const CachedGlyph* sdGlyph = sdFont.getGlyph(cp);
+        if (sdGlyph) glyph = &sdGlyph->glyph;
+      }
+    }
     if (glyph) width += glyph->advanceX;
     prevCp = cp;
   }
@@ -1101,6 +1108,7 @@ void GfxRenderer::drawTextRotated90CW(const int fontId, const int x, const int y
       lastBaseTop = glyph->top;
       hasBaseGlyph = true;
     }
+
 
     const uint8_t width = glyph->width;
     const uint8_t height = glyph->height;
