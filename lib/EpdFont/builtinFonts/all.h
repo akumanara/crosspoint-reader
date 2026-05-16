@@ -1,5 +1,21 @@
 #pragma once
 
+#include <builtinFonts/bookerly_12_bold.h>
+#include <builtinFonts/bookerly_12_bolditalic.h>
+#include <builtinFonts/bookerly_12_italic.h>
+#include <builtinFonts/bookerly_12_regular.h>
+#include <builtinFonts/bookerly_14_bold.h>
+#include <builtinFonts/bookerly_14_bolditalic.h>
+#include <builtinFonts/bookerly_14_italic.h>
+#include <builtinFonts/bookerly_14_regular.h>
+#include <builtinFonts/bookerly_16_bold.h>
+#include <builtinFonts/bookerly_16_bolditalic.h>
+#include <builtinFonts/bookerly_16_italic.h>
+#include <builtinFonts/bookerly_16_regular.h>
+#include <builtinFonts/bookerly_18_bold.h>
+#include <builtinFonts/bookerly_18_bolditalic.h>
+#include <builtinFonts/bookerly_18_italic.h>
+#include <builtinFonts/bookerly_18_regular.h>
 #include <builtinFonts/notoserif_12_bold.h>
 #include <builtinFonts/notoserif_12_bolditalic.h>
 #include <builtinFonts/notoserif_12_italic.h>
